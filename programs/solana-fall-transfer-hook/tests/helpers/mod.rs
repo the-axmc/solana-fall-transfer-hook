@@ -175,3 +175,54 @@ pub fn read_rate_limit(svm: &LiteSVM, pda: &Pubkey) -> solana_fall_transfer_hook
     solana_fall_transfer_hook::RateLimit::try_deserialize(&mut account.data.as_slice())
         .expect("rate limit should deserialize")
 }
+
+/// Same as `setup`, but also deploys the token-mover program.
+pub fn setup_with_mover() -> (LiteSVM, Keypair, Address, Address) {
+    let (mut svm, payer, program_id) = setup();
+    let mover_id = token_mover::id();
+    let bytes = include_bytes!("../../../../target/deploy/token_mover.so");
+    svm.add_program(mover_id, bytes).unwrap();
+    (svm, payer, program_id, mover_id)
+}
+
+/// Build a `move_tokens` instruction for the token-mover program.
+///
+/// The four named accounts are the transfer itself; the hook program, its
+/// ExtraAccountMetaList and the rate limit PDA ride along as remaining
+/// accounts, which is where `add_extra_accounts_for_execute_cpi` looks for
+/// them when it resolves the hook's declared extras.
+#[allow(clippy::too_many_arguments)]
+pub fn build_move_tokens_ix(
+    source_ata: &Pubkey,
+    dest_ata: &Pubkey,
+    mint: &Pubkey,
+    owner: &Pubkey,
+    program_id: &Address,
+    mover_id: &Address,
+    amount: u64,
+    decimals: u8,
+) -> Instruction {
+    let extra_account_meta_list = Pubkey::find_program_address(
+        &[b"extra-account-metas", mint.as_ref()],
+        program_id,
+    ).0;
+    let rate_limit = rate_limit_pda(mint, owner, program_id);
+
+    let mut accounts = token_mover::accounts::MoveTokens {
+        source: *source_ata,
+        mint: *mint,
+        destination: *dest_ata,
+        authority: *owner,
+        token_program: Token2022::id(),
+    }.to_account_metas(None);
+
+    accounts.push(AccountMeta::new_readonly(*program_id, false));
+    accounts.push(AccountMeta::new_readonly(extra_account_meta_list, false));
+    accounts.push(AccountMeta::new(rate_limit, false));
+
+    Instruction::new_with_bytes(
+        *mover_id,
+        &token_mover::instruction::MoveTokens { amount, decimals }.data(),
+        accounts,
+    )
+}
