@@ -121,3 +121,28 @@ fn test_initialize_rejects_legacy_spl_token_mint() {
         err.meta.logs,
     );
 }
+
+/// Challenge 2: the rate limit records which mint it belongs to.
+/// Reads the account back off-chain and deserializes it, so this asserts the
+/// field is actually persisted - not merely that the struct compiles.
+#[test]
+fn test_initialize_records_the_mint() {
+    use anchor_lang::AccountDeserialize;
+
+    let (mut svm, payer, program_id) = setup();
+    let mint = Keypair::new();
+
+    initialize_mint(&mut svm, &payer, &mint, &program_id);
+    helpers::initialize_rate_limit(&mut svm, &payer, &mint, &program_id);
+
+    let rate_limit_pda = Pubkey::find_program_address(&[b"rate_limit"], &program_id).0;
+    let account = svm.get_account(&rate_limit_pda).expect("rate limit should exist");
+    let rate_limit = solana_fall_transfer_hook::RateLimit::try_deserialize(
+        &mut account.data.as_slice(),
+    ).expect("rate limit should deserialize");
+
+    assert_eq!(rate_limit.mint, mint.pubkey(), "rate limit should record its mint");
+    assert_eq!(rate_limit.authority, payer.pubkey());
+    assert_eq!(rate_limit.max_amount, solana_fall_transfer_hook::RateLimit::MAX_AMOUNT);
+    assert_eq!(rate_limit.amount_transferred, 0);
+}
