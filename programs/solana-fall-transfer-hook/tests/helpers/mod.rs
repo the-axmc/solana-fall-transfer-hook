@@ -55,7 +55,7 @@ pub fn initialize_mint(svm: &mut LiteSVM, payer: &Keypair, mint: &Keypair, progr
 // For the challenge - Initialize the rate limit account and the extra account meta list for a given mint
 pub fn initialize_rate_limit(svm: &mut LiteSVM, payer: &Keypair, mint: &Keypair, program_id: &Address) {
     let rate_limit = Pubkey::find_program_address(
-        &[b"rate_limit"],
+        &[b"rate_limit", mint.pubkey().as_ref(), payer.pubkey().as_ref()],
         program_id,
     ).0;
 
@@ -147,7 +147,7 @@ pub fn build_transfer_with_hook_ix(
     ).0;
 
     let rate_limit = Pubkey::find_program_address(
-        &[b"rate_limit"],
+        &[b"rate_limit", mint.as_ref(), owner.as_ref()],
         program_id,
     ).0;
 
@@ -156,4 +156,22 @@ pub fn build_transfer_with_hook_ix(
     ix.accounts.push(AccountMeta::new(rate_limit, false));
 
     ix
+}
+
+/// Derive the rate limit PDA for a given (mint, owner) pair. Seeds must match
+/// `extra_account_metas()`, the `Initialize` context and the `TransferHook`
+/// context.
+pub fn rate_limit_pda(mint: &Pubkey, owner: &Pubkey, program_id: &Address) -> Pubkey {
+    Pubkey::find_program_address(
+        &[b"rate_limit", mint.as_ref(), owner.as_ref()],
+        program_id,
+    ).0
+}
+
+/// Read and deserialize a RateLimit account.
+pub fn read_rate_limit(svm: &LiteSVM, pda: &Pubkey) -> solana_fall_transfer_hook::RateLimit {
+    use anchor_lang::AccountDeserialize;
+    let account = svm.get_account(pda).expect("rate limit account should exist");
+    solana_fall_transfer_hook::RateLimit::try_deserialize(&mut account.data.as_slice())
+        .expect("rate limit should deserialize")
 }

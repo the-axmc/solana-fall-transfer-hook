@@ -24,7 +24,7 @@ fn test_initialize() {
 
     // Then initialize the rate limit account
     let rate_limit = Pubkey::find_program_address(
-        &[b"rate_limit"],
+        &[b"rate_limit", mint.pubkey().as_ref(), payer.pubkey().as_ref()],
         &program_id,
     ).0;
 
@@ -89,7 +89,8 @@ fn test_initialize_rejects_legacy_spl_token_mint() {
     svm.send_transaction(tx).expect("creating the legacy mint should succeed");
 
     // Now point `initialize` at it - this must be rejected.
-    let rate_limit = Pubkey::find_program_address(&[b"rate_limit"], &program_id).0;
+    let rate_limit = Pubkey::find_program_address(
+        &[b"rate_limit", legacy_mint.pubkey().as_ref(), payer.pubkey().as_ref()], &program_id).0;
 
     let instruction = Instruction::new_with_bytes(
         program_id,
@@ -135,7 +136,8 @@ fn test_initialize_records_the_mint() {
     initialize_mint(&mut svm, &payer, &mint, &program_id);
     helpers::initialize_rate_limit(&mut svm, &payer, &mint, &program_id);
 
-    let rate_limit_pda = Pubkey::find_program_address(&[b"rate_limit"], &program_id).0;
+    let rate_limit_pda = Pubkey::find_program_address(
+        &[b"rate_limit", mint.pubkey().as_ref(), payer.pubkey().as_ref()], &program_id).0;
     let account = svm.get_account(&rate_limit_pda).expect("rate limit should exist");
     let rate_limit = solana_fall_transfer_hook::RateLimit::try_deserialize(
         &mut account.data.as_slice(),
